@@ -1,0 +1,10 @@
+{
+  "name": "bombarossa",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "test": "npm test -w @bombarossa/game-core",
+    "server": "npm start -w @bombarossa/server",
+    "mobile": "npm start -w @bombarossa/mobile"
+  }
+}
