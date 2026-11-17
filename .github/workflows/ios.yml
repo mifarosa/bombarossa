@@ -109,6 +109,14 @@ jobs:
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER_ID"
 
+      - name: Print distribution logs on failure
+        if: failure()
+        run: |
+          find "$TMPDIR" -maxdepth 2 -name '*.xcdistributionlogs' 2>/dev/null | while read -r d; do
+            echo "=== $d"
+            tail -n 120 "$d/IDEDistribution.standard.log" 2>/dev/null
+          done
+
       - name: Remove API key
         if: always()
         run: rm -f ~/private_keys/AuthKey_*.p8
