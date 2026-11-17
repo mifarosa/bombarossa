@@ -9,7 +9,7 @@ import { SERVER_URL } from './src/config';
 import { useLocalGame } from './src/useLocalGame';
 import { useOnlineGame } from './src/useOnlineGame';
 
-type Screen = 'menu' | 'solo' | 'online';
+type Screen = 'menu' | 'solo' | 'sandbox' | 'online';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('menu');
@@ -22,6 +22,14 @@ export default function App() {
         {screen === 'menu' && <Menu onPick={setScreen} />}
         {screen === 'solo' && (
           <SoloScreen key={round} onExit={() => setScreen('menu')} onRestart={() => setRound((r) => r + 1)} />
+        )}
+        {screen === 'sandbox' && (
+          <SoloScreen
+            key={round}
+            botCount={0}
+            onExit={() => setScreen('menu')}
+            onRestart={() => setRound((r) => r + 1)}
+          />
         )}
         {screen === 'online' && (
           <OnlineScreen key={round} onExit={() => setScreen('menu')} onRestart={() => setRound((r) => r + 1)} />
@@ -37,12 +45,22 @@ function Menu({ onPick }: { onPick: (s: Screen) => void }) {
       <Text style={styles.title}>BOMBAROSSA</Text>
       <Button label="Tek Oyuncu" onPress={() => onPick('solo')} />
       <Button label="Online" onPress={() => onPick('online')} />
+      <Button label="Test: Boş Harita" onPress={() => onPick('sandbox')} />
     </View>
   );
 }
 
-function SoloScreen({ onExit, onRestart }: { onExit: () => void; onRestart: () => void }) {
-  const { state, myId, onDir, onBomb } = useLocalGame(3);
+function SoloScreen({
+  botCount = 3,
+  onExit,
+  onRestart,
+}: {
+  botCount?: number;
+  onExit: () => void;
+  onRestart: () => void;
+}) {
+  // botCount 0 = sandbox: alone on the map, the match never ends.
+  const { state, myId, onDir, onBomb } = useLocalGame(botCount);
   return <Match state={state} myId={myId} onDir={onDir} onBomb={onBomb} onExit={onExit} onRestart={onRestart} />;
 }
 

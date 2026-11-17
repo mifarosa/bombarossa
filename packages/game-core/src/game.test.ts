@@ -218,3 +218,12 @@ describe('bots', () => {
     expect(s.players[0].alive).toBe(true);
   });
 });
+
+describe('sandbox (single player)', () => {
+  it('never ends the match', () => {
+    const s = createGame(3, 1);
+    run(s, 200);
+    expect(s.over).toBe(false);
+    expect(s.players[0].alive).toBe(true);
+  });
+});
