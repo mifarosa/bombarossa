@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Bombarossa",
+    "slug": "bombarossa",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.bombarossa.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
+        "NSLocalNetworkUsageDescription": "Used to connect to a local development game server."
+      }
+    }
+  }
+}
