@@ -109,13 +109,24 @@ jobs:
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER_ID"
 
-      - name: Print distribution logs on failure
+      - name: Collect distribution logs
         if: failure()
         run: |
-          find "$TMPDIR" -maxdepth 2 -name '*.xcdistributionlogs' 2>/dev/null | while read -r d; do
-            echo "=== $d"
-            tail -n 120 "$d/IDEDistribution.standard.log" 2>/dev/null
+          mkdir -p "$RUNNER_TEMP/distlogs"
+          echo "TMPDIR=$TMPDIR"
+          find "$TMPDIR" -maxdepth 2 -name '*.xcdistributionlogs' -exec cp -R {} "$RUNNER_TEMP/distlogs/" \; 2>/dev/null || true
+          find "$RUNNER_TEMP/distlogs" -type f | while read -r f; do
+            echo "=== $f"
+            tail -n 150 "$f"
           done
+
+      - name: Upload distribution logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-logs
+          path: ${{ runner.temp }}/distlogs
+          if-no-files-found: warn
 
       - name: Remove API key
         if: always()
