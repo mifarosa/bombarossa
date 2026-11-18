@@ -24,7 +24,7 @@ Point the app at your server with `EXPO_PUBLIC_SERVER_URL` (use `wss://` for any
 
 `.github/workflows/ios.yml` builds on a macOS runner and uploads to TestFlight. One-time setup:
 
-1. In App Store Connect, create an app record whose bundle ID matches `ios.bundleIdentifier` in `apps/mobile/app.json` (default `com.bombarossa.app`, change it to your own).
+1. In App Store Connect, create an app record whose bundle ID matches `ios.bundleIdentifier` in `apps/mobile/app.json` (default `com.farukgul.bombarossa`, change it to your own).
 2. App Store Connect → Users and Access → Integrations → create an API key with the **App Manager** role. Download the `.p8` file (only possible once).
 3. In the GitHub repo → Settings → Secrets and variables → Actions, add:
    - secrets: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (full contents of the `.p8` file), `APPLE_TEAM_ID`
