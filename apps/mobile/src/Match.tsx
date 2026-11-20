@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { GameEvent, GameSource, RenderFrame } from '@bombarossa/game-core';
 import { GameCanvas } from './GameCanvas';
 import { TouchControls } from './TouchControls';
@@ -101,7 +102,7 @@ export function Match({ source, onExit, onRestart, restartLabel = 'Tekrar oyna',
       : null;
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.ui.bg }]}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.ui.bg }]}>
       <View style={styles.hud}>
         <View style={styles.chips}>
           {hud?.players.map((p) => (
@@ -151,7 +152,7 @@ export function Match({ source, onExit, onRestart, restartLabel = 'Tekrar oyna',
           <Button label="Menü" variant="secondary" onPress={onExit} />
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
