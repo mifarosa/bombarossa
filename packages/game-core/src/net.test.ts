@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FloatingStick,
+  dirFromVector,
   GameEvent,
   GameState,
   Input,
@@ -193,5 +195,34 @@ describe('LocalGame', () => {
     g.update(0);
     g.update(60_000);
     expect(g.state.tick).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('joystick', () => {
+  it('has a deadzone and picks the dominant axis', () => {
+    expect(dirFromVector(5, 3, null)).toBeNull();
+    expect(dirFromVector(40, 10, null)).toBe('right');
+    expect(dirFromVector(-40, 10, null)).toBe('left');
+    expect(dirFromVector(3, -40, null)).toBe('up');
+    expect(dirFromVector(3, 40, null)).toBe('down');
+  });
+
+  it('does not flicker on diagonals (hysteresis)', () => {
+    expect(dirFromVector(40, 36, 'right')).toBe('right'); // nearly diagonal: keep going right
+    expect(dirFromVector(36, 40, 'down')).toBe('down');
+    expect(dirFromVector(20, 40, 'right')).toBe('down'); // clearly vertical now
+  });
+
+  it('floating stick follows a far-dragged thumb and reports the direction', () => {
+    const s = new FloatingStick(50);
+    s.begin(100, 400);
+    expect(s.move(160, 402)).toBe('right');
+    s.move(400, 400); // dragged far to the right
+    expect(s.originX).toBeGreaterThan(100); // base moved along
+    expect(s.move(300, 520)).toBe('down'); // can reverse quickly because the base followed
+    const k = s.knob();
+    expect(Math.hypot(k.x, k.y)).toBeLessThanOrEqual(50.001);
+    s.end();
+    expect(s.dir).toBeNull();
   });
 });

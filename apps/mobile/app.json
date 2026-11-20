@@ -2,18 +2,27 @@
   "expo": {
     "name": "Bombarossa",
     "slug": "bombarossa",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#2a2250",
     "ios": {
       "bundleIdentifier": "com.farukgul.bombarossa",
       "supportsTablet": false,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
-        "NSLocalNetworkUsageDescription": "Used to connect to a local development game server."
+        "ITSAppUsesNonExemptEncryption": false
       }
+    },
+    "android": {
+      "package": "com.farukgul.bombarossa",
+      "adaptiveIcon": {
+        "backgroundColor": "#2a2250",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
     }
   }
 }

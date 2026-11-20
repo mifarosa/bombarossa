@@ -185,6 +185,7 @@ export class OnlineGame implements GameSource {
   private handle(msg: ServerMessage): void {
     switch (msg.t) {
       case 'lobby':
+        this.error = null;
         this.lobby = msg;
         this.token = msg.token;
         this.code = msg.code;
@@ -213,6 +214,7 @@ export class OnlineGame implements GameSource {
   }
 
   private onStart(msg: Extract<ServerMessage, { t: 'start' }>): void {
+    this.error = null;
     this.you = msg.you;
     this.token = msg.token;
     this.code = msg.code;

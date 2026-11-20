@@ -5,6 +5,7 @@ export * from './bot';
 export * from './snapshot';
 export * from './events';
 export * from './protocol';
+export * from './controls';
 export * from './prediction';
 export * from './frame';
 export * from './client/source';
