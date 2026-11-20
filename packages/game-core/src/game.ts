@@ -1,16 +1,19 @@
 import {
+  BASE_SPEED,
   BOMB_TIMER,
   FLAME_TTL,
-  GRID_H,
-  GRID_W,
+  HALF,
   MAX_BOMBS,
+  MAX_PLAYERS,
   MAX_RANGE,
-  MIN_MOVE_DELAY,
+  MAX_SPEED,
   POWERUP_CHANCE,
-  SPAWNS,
+  SPEED_STEP,
   START_BOMBS,
-  START_MOVE_DELAY,
   START_RANGE,
+  UNIT,
+  mapSizeFor,
+  spawnsFor,
 } from './constants';
 import { generateTiles } from './map';
 import { nextRandom } from './rng';
@@ -22,42 +25,48 @@ export const DIRS: Record<Dir, readonly [number, number]> = {
   left: [-1, 0],
   right: [1, 0],
 };
-const DIR_LIST: Dir[] = ['up', 'down', 'left', 'right'];
+export const DIR_LIST: Dir[] = ['up', 'down', 'left', 'right'];
 const POWERUP_KINDS: PowerUpKind[] = ['bomb', 'range', 'speed'];
 
-export function idx(x: number, y: number): number {
-  return y * GRID_W + x;
+export function idx(width: number, x: number, y: number): number {
+  return y * width + x;
 }
 
-export function inBounds(x: number, y: number): boolean {
-  return x >= 0 && y >= 0 && x < GRID_W && y < GRID_H;
+export function cellOf(units: number): number {
+  return Math.floor(units / UNIT);
 }
 
-/** Creates a new match. `playerCount` is 2..4. */
+export function inBounds(state: Pick<GameState, 'width' | 'height'>, x: number, y: number): boolean {
+  return x >= 0 && y >= 0 && x < state.width && y < state.height;
+}
+
+/** Creates a new match for 1..6 players (1 = sandbox that never ends). */
 export function createGame(seed: number, playerCount: number): GameState {
-  if (playerCount < 1 || playerCount > SPAWNS.length) {
-    throw new Error(`playerCount must be 1..${SPAWNS.length}`);
+  if (playerCount < 1 || playerCount > MAX_PLAYERS) {
+    throw new Error(`playerCount must be 1..${MAX_PLAYERS}`);
   }
-  const { tiles, rng } = generateTiles(seed);
+  const { width, height } = mapSizeFor(playerCount);
+  const { tiles, rng } = generateTiles(seed, width, height, playerCount);
+  const spawns = spawnsFor(width, height);
   const players: Player[] = [];
   for (let id = 0; id < playerCount; id++) {
-    const [x, y] = SPAWNS[id];
+    const [sx, sy] = spawns[id];
     players.push({
       id,
-      x,
-      y,
+      x: sx * UNIT + UNIT / 2,
+      y: sy * UNIT + UNIT / 2,
       alive: true,
       maxBombs: START_BOMBS,
       range: START_RANGE,
-      moveDelay: START_MOVE_DELAY,
-      cooldown: 0,
+      speed: BASE_SPEED,
       facing: 'down',
+      moving: false,
     });
   }
   return {
     tick: 0,
-    width: GRID_W,
-    height: GRID_H,
+    width,
+    height,
     tiles,
     players,
     bombs: [],
@@ -74,14 +83,111 @@ export function bombAt(state: GameState, x: number, y: number): Bomb | undefined
   return state.bombs.find((b) => b.x === x && b.y === y);
 }
 
+/** Whether a cell blocks the given player (walls, blocks, and bombs they can't pass through). */
+export function isSolid(state: GameState, cx: number, cy: number, playerId: number): boolean {
+  if (!inBounds(state, cx, cy)) return true;
+  if (state.tiles[idx(state.width, cx, cy)] !== Tile.Empty) return true;
+  const b = bombAt(state, cx, cy);
+  return !!b && !b.pass.includes(playerId);
+}
+
+/** Cells that can be walked on at all (ignores pass-through rights). Used by bots. */
 export function isWalkable(state: GameState, x: number, y: number): boolean {
-  return inBounds(x, y) && state.tiles[idx(x, y)] === Tile.Empty && !bombAt(state, x, y);
+  return inBounds(state, x, y) && state.tiles[idx(state.width, x, y)] === Tile.Empty && !bombAt(state, x, y);
+}
+
+function overlapsCell(p: Pick<Player, 'x' | 'y'>, cx: number, cy: number): boolean {
+  return (
+    p.x - HALF < (cx + 1) * UNIT &&
+    p.x + HALF > cx * UNIT &&
+    p.y - HALF < (cy + 1) * UNIT &&
+    p.y + HALF > cy * UNIT
+  );
+}
+
+/** A player may walk through a bomb they were standing on until they have fully left its cell. */
+function refreshPass(state: GameState, p: Player): void {
+  for (const b of state.bombs) {
+    if (b.pass.length > 0 && b.pass.includes(p.id) && !overlapsCell(p, b.x, b.y)) {
+      b.pass = b.pass.filter((id) => id !== p.id);
+    }
+  }
+}
+
+/**
+ * Moves a player one tick in `dir` with classic Bomberman feel: the player is
+ * blocked flush against obstacles, and when only the edge of the box clips a
+ * corner they are slid into the free lane ("corner assist"). Returns whether
+ * the player moved. Used by the simulation on the server and for client prediction.
+ */
+export function movePlayer(state: GameState, p: Player, dir: Dir): boolean {
+  refreshPass(state, p);
+  p.facing = dir;
+  const [dx, dy] = DIRS[dir];
+  const horizontal = dx !== 0;
+  const sign = horizontal ? dx : dy;
+  const step = p.speed;
+
+  let a = horizontal ? p.x : p.y; // position along the movement axis
+  let q = horizontal ? p.y : p.x; // position across it
+
+  const solid = (ca: number, cq: number) =>
+    horizontal ? isSolid(state, ca, cq, p.id) : isSolid(state, cq, ca, p.id);
+
+  const leadNow = sign > 0 ? Math.floor((a + HALF - 1) / UNIT) : Math.floor((a - HALF) / UNIT);
+  const leadNext =
+    sign > 0 ? Math.floor((a + step + HALF - 1) / UNIT) : Math.floor((a - step - HALF) / UNIT);
+
+  let moved = false;
+  if (leadNext === leadNow) {
+    a += sign * step;
+    moved = true;
+  } else {
+    const rowLo = Math.floor((q - HALF) / UNIT);
+    const rowHi = Math.floor((q + HALF - 1) / UNIT);
+    let blocked = false;
+    for (let r = rowLo; r <= rowHi; r++) if (solid(leadNext, r)) blocked = true;
+
+    if (!blocked) {
+      a += sign * step;
+      moved = true;
+    } else {
+      const lane = Math.floor(q / UNIT);
+      if (!solid(leadNext, lane)) {
+        // Centre lane is open, only the box edge clips a neighbour: slide toward the lane centre.
+        const off = lane * UNIT + UNIT / 2 - q;
+        const slide = Math.max(-step, Math.min(step, off));
+        if (slide !== 0) {
+          q += slide;
+          moved = true;
+        }
+      } else {
+        // Truly blocked: stop flush against the obstacle.
+        const flush = sign > 0 ? leadNext * UNIT - HALF : (leadNext + 1) * UNIT + HALF;
+        const next = sign > 0 ? Math.min(a + step, flush) : Math.max(a - step, flush);
+        if (next !== a && (sign > 0 ? next > a : next < a)) {
+          a = next;
+          moved = true;
+        }
+      }
+    }
+  }
+
+  if (horizontal) {
+    p.x = a;
+    p.y = q;
+  } else {
+    p.y = a;
+    p.x = q;
+  }
+  p.moving = moved;
+  return moved;
 }
 
 /**
  * Advances the game by one tick. Mutates `state` in place and returns it.
  * `inputs` maps player id -> input for this tick. Deterministic for a given
- * state + inputs, which is what makes server/client sharing and tests possible.
+ * state + inputs, which lets server, clients (prediction) and tests share it.
  */
 export function step(state: GameState, inputs: Record<number, Input> = {}): GameState {
   if (state.over) return state;
@@ -90,23 +196,9 @@ export function step(state: GameState, inputs: Record<number, Input> = {}): Game
   for (const p of state.players) {
     if (!p.alive) continue;
     const input = inputs[p.id] ?? NO_INPUT;
-    if (p.cooldown > 0) p.cooldown--;
-
+    p.moving = false;
     if (input.bomb) placeBomb(state, p);
-
-    if (input.dir) {
-      p.facing = input.dir;
-      if (p.cooldown === 0) {
-        const [dx, dy] = DIRS[input.dir];
-        const nx = p.x + dx;
-        const ny = p.y + dy;
-        if (isWalkable(state, nx, ny)) {
-          p.x = nx;
-          p.y = ny;
-          p.cooldown = p.moveDelay;
-        }
-      }
-    }
+    if (input.dir) movePlayer(state, p, input.dir);
     collectPowerUp(state, p);
   }
 
@@ -118,7 +210,13 @@ export function step(state: GameState, inputs: Record<number, Input> = {}): Game
   explodeDueBombs(state);
 
   for (const p of state.players) {
-    if (p.alive && state.flames.some((f) => f.x === p.x && f.y === p.y)) p.alive = false;
+    if (!p.alive) continue;
+    const cx = cellOf(p.x);
+    const cy = cellOf(p.y);
+    if (state.flames.some((f) => f.x === cx && f.y === cy)) {
+      p.alive = false;
+      p.moving = false;
+    }
   }
 
   checkGameOver(state);
@@ -126,25 +224,31 @@ export function step(state: GameState, inputs: Record<number, Input> = {}): Game
 }
 
 function placeBomb(state: GameState, p: Player): void {
+  const cx = cellOf(p.x);
+  const cy = cellOf(p.y);
   const owned = state.bombs.filter((b) => b.owner === p.id).length;
-  if (owned >= p.maxBombs || bombAt(state, p.x, p.y)) return;
+  if (owned >= p.maxBombs || bombAt(state, cx, cy)) return;
+  const pass = state.players.filter((o) => o.alive && overlapsCell(o, cx, cy)).map((o) => o.id);
   state.bombs.push({
     id: state.nextBombId++,
     owner: p.id,
-    x: p.x,
-    y: p.y,
+    x: cx,
+    y: cy,
     timer: BOMB_TIMER,
     range: p.range,
+    pass,
   });
 }
 
 function collectPowerUp(state: GameState, p: Player): void {
-  const i = state.powerUps.findIndex((u) => u.x === p.x && u.y === p.y);
+  const cx = cellOf(p.x);
+  const cy = cellOf(p.y);
+  const i = state.powerUps.findIndex((u) => u.x === cx && u.y === cy);
   if (i < 0) return;
   const [u] = state.powerUps.splice(i, 1);
   if (u.kind === 'bomb') p.maxBombs = Math.min(MAX_BOMBS, p.maxBombs + 1);
   else if (u.kind === 'range') p.range = Math.min(MAX_RANGE, p.range + 1);
-  else p.moveDelay = Math.max(MIN_MOVE_DELAY, p.moveDelay - 1);
+  else p.speed = Math.min(MAX_SPEED, p.speed + SPEED_STEP);
 }
 
 function addFlame(state: GameState, x: number, y: number): void {
@@ -169,8 +273,8 @@ function explodeDueBombs(state: GameState): void {
       for (let i = 1; i <= bomb.range; i++) {
         const x = bomb.x + dx * i;
         const y = bomb.y + dy * i;
-        if (!inBounds(x, y)) break;
-        const tile = state.tiles[idx(x, y)];
+        if (!inBounds(state, x, y)) break;
+        const tile = state.tiles[idx(state.width, x, y)];
         if (tile === Tile.Wall) break;
 
         addFlame(state, x, y);
@@ -193,7 +297,7 @@ function explodeDueBombs(state: GameState): void {
 }
 
 function destroyBlock(state: GameState, x: number, y: number): void {
-  state.tiles[idx(x, y)] = Tile.Empty;
+  state.tiles[idx(state.width, x, y)] = Tile.Empty;
   let r: number;
   [r, state.rng] = nextRandom(state.rng);
   if (r < POWERUP_CHANCE) {
@@ -210,4 +314,16 @@ function checkGameOver(state: GameState): void {
     state.over = true;
     state.winner = alive.length === 1 ? alive[0].id : null;
   }
+}
+
+/** Deep copy of a game state without relying on structuredClone (not available everywhere). */
+export function cloneState(s: GameState): GameState {
+  return {
+    ...s,
+    tiles: s.tiles.slice(),
+    players: s.players.map((p) => ({ ...p })),
+    bombs: s.bombs.map((b) => ({ ...b, pass: b.pass.slice() })),
+    flames: s.flames.map((f) => ({ ...f })),
+    powerUps: s.powerUps.map((u) => ({ ...u })),
+  };
 }

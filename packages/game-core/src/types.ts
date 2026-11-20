@@ -7,23 +7,29 @@ export type PowerUpKind = 'bomb' | 'range' | 'speed';
 
 export interface Player {
   id: number;
+  /** Center of the player's box in sub-units (UNIT per cell). */
   x: number;
   y: number;
   alive: boolean;
   maxBombs: number;
   range: number;
-  moveDelay: number; // ticks needed between two moves
-  cooldown: number; // ticks left until the next move is allowed
+  /** Sub-units moved per tick while a direction is held. */
+  speed: number;
   facing: Dir;
+  /** True if the player actually moved during the last tick (for animation). */
+  moving: boolean;
 }
 
 export interface Bomb {
   id: number;
   owner: number;
+  /** Cell coordinates. */
   x: number;
   y: number;
   timer: number;
   range: number;
+  /** Players who may still walk through this bomb (they were standing on it when it was placed). */
+  pass: number[];
 }
 
 export interface Flame {
@@ -38,7 +44,7 @@ export interface PowerUp {
   kind: PowerUpKind;
 }
 
-/** Plain JSON-serializable state so it can be sent over the network as-is. */
+/** Plain JSON-serializable state. */
 export interface GameState {
   tick: number;
   width: number;
