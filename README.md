@@ -67,5 +67,5 @@ Then tell the app where the server is, either way:
 Actions → **Android APK** → Run workflow → download the `bombarossa-android-N` artifact (a zip containing `app-release.apk`) → copy to the phone → open it and allow installs from unknown sources. No Google Play account needed. Each build gets a higher version code, so new APKs install over old ones.
 
 ## Notes
-- The app icon and splash are still the Expo placeholders in `apps/mobile/assets`.
+- The app icon is generated from code: `npx tsx tools/preview/icons.ts apps/mobile/assets [previewDir]` (iOS icon, Android adaptive layers, themed icon, splash).
 - Online uses `wss://` only in production: iOS/Android block plain `ws://` to remote hosts.

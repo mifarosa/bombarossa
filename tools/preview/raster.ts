@@ -54,15 +54,19 @@ export class RasterPainter implements Painter {
     readonly height: number,
     private readonly ss = 3,
   ) {
-    this.data = new Float32Array(width * height * 3);
+    this.data = new Float32Array(width * height * 4);
   }
 
+  /** When true, drawing removes coverage from the destination alpha instead of painting (for cut-outs). */
+  erase = false;
+
   clear(color: string): void {
-    const [r, g, b] = parseColor(color);
+    const [r, g, b, a] = parseColor(color);
     for (let i = 0; i < this.width * this.height; i++) {
-      this.data[i * 3] = r;
-      this.data[i * 3 + 1] = g;
-      this.data[i * 3 + 2] = b;
+      this.data[i * 4] = r;
+      this.data[i * 4 + 1] = g;
+      this.data[i * 4 + 2] = b;
+      this.data[i * 4 + 3] = a;
     }
   }
 
@@ -122,10 +126,18 @@ export class RasterPainter implements Painter {
         const ly = im[1] * cx + im[3] * cy + im[5];
         const col = colorAt(lx, ly);
         const a = (hit / total) * col[3] * alpha;
-        const i = (py * this.width + px) * 3;
-        this.data[i] += (col[0] - this.data[i]) * a;
-        this.data[i + 1] += (col[1] - this.data[i + 1]) * a;
-        this.data[i + 2] += (col[2] - this.data[i + 2]) * a;
+        const i = (py * this.width + px) * 4;
+        const dstA = this.data[i + 3];
+        if (this.erase) {
+          this.data[i + 3] = dstA * (1 - a);
+          continue;
+        }
+        const outA = a + dstA * (1 - a);
+        if (outA <= 0) continue;
+        for (let k = 0; k < 3; k++) {
+          this.data[i + k] = (col[k] * a + this.data[i + k] * dstA * (1 - a)) / outA;
+        }
+        this.data[i + 3] = outA;
       }
     }
   }
@@ -249,13 +261,18 @@ export class RasterPainter implements Painter {
     );
   }
 
-  toPng(): Buffer {
+  /** `alpha: true` writes an RGBA PNG (transparent areas kept); otherwise RGB, which is what iOS icons need. */
+  toPng(alpha = false): Buffer {
     const { width, height } = this;
-    const raw = Buffer.alloc((width * 3 + 1) * height);
+    const ch = alpha ? 4 : 3;
+    const raw = Buffer.alloc((width * ch + 1) * height);
     for (let y = 0; y < height; y++) {
-      raw[y * (width * 3 + 1)] = 0;
-      for (let x = 0; x < width * 3; x++) {
-        raw[y * (width * 3 + 1) + 1 + x] = Math.max(0, Math.min(255, Math.round(this.data[y * width * 3 + x])));
+      raw[y * (width * ch + 1)] = 0;
+      for (let x = 0; x < width; x++) {
+        const src = (y * width + x) * 4;
+        const dst = y * (width * ch + 1) + 1 + x * ch;
+        for (let k = 0; k < 3; k++) raw[dst + k] = Math.max(0, Math.min(255, Math.round(this.data[src + k])));
+        if (alpha) raw[dst + 3] = Math.max(0, Math.min(255, Math.round(this.data[src + 3] * 255)));
       }
     }
     const chunk = (type: string, body: Buffer) => {
@@ -270,7 +287,7 @@ export class RasterPainter implements Painter {
     ihdr.writeUInt32BE(width, 0);
     ihdr.writeUInt32BE(height, 4);
     ihdr[8] = 8;
-    ihdr[9] = 2; // truecolour
+    ihdr[9] = alpha ? 6 : 2; // truecolour (with alpha)
     return Buffer.concat([
       Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
       chunk('IHDR', ihdr),
@@ -279,7 +296,7 @@ export class RasterPainter implements Painter {
     ]);
   }
 
-  save_png(path: string): void {
-    writeFileSync(path, this.toPng());
+  save_png(path: string, alpha = false): void {
+    writeFileSync(path, this.toPng(alpha));
   }
 }
